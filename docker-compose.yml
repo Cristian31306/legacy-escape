@@ -1,0 +1,56 @@
+name: legacy-escape
+
+services:
+  legacy-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-legacy}
+      POSTGRES_USER: ${POSTGRES_USER:-legacy}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-legacy}
+    volumes:
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+      - legacy-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  # Educación: lee la base directamente. NO SE PUEDE MODIFICAR.
+  educacion-app:
+    build: ./services/educacion
+    env_file: .env
+    ports:
+      - "${EDUCACION_PORT:-8090}:8090"
+    depends_on:
+      legacy-db:
+        condition: service_healthy
+
+  # Portal de servicios: solo habla HTTP con GATEWAY_URL. NO SE PUEDE MODIFICAR.
+  portal-client:
+    build: ./services/portal
+    env_file: .env
+    ports:
+      - "${PORTAL_PORT:-8092}:8092"
+
+  # Subsidios: registra retiros con sp_registrar_retiro. Debe migrar al servicio nuevo.
+  subsidios-app:
+    build: ./services/subsidios
+    env_file: .env
+    ports:
+      - "${SUBSIDIOS_PORT:-8091}:8091"
+    depends_on:
+      legacy-db:
+        condition: service_healthy
+
+  # Agreguen aquí su gateway (puerto de contrato 8082) y los servicios que necesiten.
+  # gateway:
+  #   build: ./src
+  #   env_file: .env
+  #   ports:
+  #     - "8082:8082"
+  #   volumes:
+  #     - ./logs:/app/logs
+
+volumes:
+  legacy-db-data:
