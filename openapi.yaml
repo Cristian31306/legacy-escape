@@ -1,0 +1,354 @@
+openapi: 3.0.3
+info:
+  title: Legacy Escape Gateway API
+  description: API de transición y desacoplamiento para el sistema de Afiliaciones de la Caja de Compensación Familiar.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8082
+    description: Gateway Local en Docker
+
+paths:
+  /health:
+    get:
+      summary: Verificación de salud del Gateway y del motor Legacy
+      operationId: getHealth
+      responses:
+        "200":
+          description: Estado del servicio y de la base de datos heredada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /api/v1/members/{document}:
+    get:
+      summary: Consulta canónica de afiliado por documento
+      operationId: getMember
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: document
+          in: path
+          required: true
+          description: Número de documento de identificación del afiliado
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Datos canónicos del afiliado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+
+  /api/v1/members/{document}/beneficiaries:
+    get:
+      summary: Lista canónica de beneficiarios asociados a un afiliado
+      operationId: getMemberBeneficiaries
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: document
+          in: path
+          required: true
+          description: Número de documento del afiliado titular
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Lista de beneficiarios activos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BeneficiaryResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+
+  /api/v1/companies/{id}:
+    get:
+      summary: Consulta de información de empresa y recuento de afiliados activos
+      operationId: getCompany
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Identificador único de la empresa
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Información general de la empresa
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompanyResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+
+  /api/v1/members/{document}/retirements:
+    post:
+      summary: Registro de retiro de un afiliado con idempotencia y cola outbox
+      operationId: registerRetirement
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: document
+          in: path
+          required: true
+          description: Número de documento del afiliado a retirar
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RetirementRequest"
+      responses:
+        "201":
+          description: Retiro registrado y aplicado exitosamente en la base legacy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RetirementSuccessResponse"
+        "200":
+          description: Petición repetida detectada e idempotente (ya procesada)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RetirementIdempotentResponse"
+        "202":
+          description: Base legacy no disponible; retiro almacenado en outbox persistente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RetirementAcceptedResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /api/v1/migration/status:
+    get:
+      summary: Consulta del estado de migración por dominio
+      operationId: getMigrationStatus
+      responses:
+        "200":
+          description: Estado actual de migración de cada dominio
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MigrationStatusResponse"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: Token Bearer por consumidor (PORTAL_TOKEN, SUBSIDIOS_TOKEN, MOBILE_TOKEN)
+
+  responses:
+    UnauthorizedError:
+      description: Token Bearer ausente o inválido
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ForbiddenError:
+      description: Consumidor no autorizado para operaciones de escritura (ej. mobile)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFoundError:
+      description: Recurso no encontrado en el sistema
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ServiceUnavailableError:
+      description: Base de datos legacy no disponible dentro de la ventana de timeout
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+  schemas:
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - legacy
+      properties:
+        status:
+          type: string
+          example: "UP"
+        legacy:
+          type: string
+          enum: ["UP", "DOWN"]
+          example: "UP"
+
+    CompanyResponse:
+      type: object
+      required:
+        - id
+        - name
+        - activeMembers
+      properties:
+        id:
+          type: string
+          example: "1"
+        name:
+          type: string
+          example: "ACME Corp"
+        activeMembers:
+          type: integer
+          example: 15
+
+    MemberResponse:
+      type: object
+      required:
+        - document
+        - fullName
+        - status
+        - company
+      properties:
+        document:
+          type: string
+          example: "1019282447"
+        fullName:
+          type: string
+          example: "JUAN PEREZ"
+        status:
+          type: string
+          enum: ["ACTIVE", "RETIRED", "SUSPENDED"]
+          example: "ACTIVE"
+        company:
+          type: object
+          required:
+            - id
+            - name
+          properties:
+            id:
+              type: string
+              example: "1"
+            name:
+              type: string
+              example: "ACME Corp"
+
+    BeneficiaryResponse:
+      type: object
+      required:
+        - document
+        - fullName
+        - relationship
+      properties:
+        document:
+          type: string
+          example: "1098765432"
+        fullName:
+          type: string
+          example: "MARIA PEREZ"
+        relationship:
+          type: string
+          enum: ["CONYUGE", "HIJO", "PADRE", "MADRE"]
+          example: "HIJO"
+
+    RetirementRequest:
+      type: object
+      required:
+        - requestId
+        - date
+        - reason
+      properties:
+        requestId:
+          type: string
+          example: "req-9876-abcd"
+        date:
+          type: string
+          format: date
+          example: "2026-10-14"
+        reason:
+          type: string
+          example: "Renuncia voluntaria"
+
+    RetirementSuccessResponse:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          example: "Retiro registrado exitosamente"
+        movimiento:
+          type: integer
+          example: 1042
+
+    RetirementIdempotentResponse:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          example: "Petición ya procesada con anterioridad"
+
+    RetirementAcceptedResponse:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          example: "Base legacy no disponible; solicitud encolada en outbox"
+
+    MigrationStatusResponse:
+      type: object
+      required:
+        - domains
+      properties:
+        domains:
+          type: object
+          properties:
+            affiliations:
+              type: string
+              enum: ["LEGACY", "DUAL", "MODERN"]
+              example: "DUAL"
+
+    ErrorResponse:
+      type: object
+      required:
+        - message
+        - error_id
+      properties:
+        message:
+          type: string
+          example: "Afiliado no encontrado"
+        error_id:
+          type: string
+          format: uuid
+          example: "c9b1f2e0-7d6a-4b5c-8e3f-1a2b3c4d5e6f"
+        code:
+          type: string
+          example: "LEGACY_UNAVAILABLE"
