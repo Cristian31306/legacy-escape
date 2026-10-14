@@ -1,18 +1,17 @@
-# Arquitectura
-
-<!--
-Plantilla con el formato obligatorio: cada sección cuenta solo si tiene al menos 20 palabras
-(estos comentarios no cuentan). "Alternativas descartadas" necesita al menos 2 alternativas en lista
-("- ..."), cada una con el motivo por el que se descartó.
-Revisen con: ./validator entregables
--->
+# Arquitectura de Transición — Legacy Escape
 
 ## Contexto
+El sistema central de la Caja de Compensación Familiar opera sobre un motor relacional heredado donde múltiples aplicaciones satélite (Educación, Subsidios y Reportes) se acoplan directamente a las tablas de la base de datos sin una capa de abstracción. Este diseño acoplado impide modificar la estructura física del almacenamiento sin ocasionar fallas generalizadas e interrupciones del servicio en aplicaciones de terceros que escapan a nuestro control directo. La meta estratégica consiste en habilitar una modernización gradual dominio por dominio iniciando con Afiliaciones, introduciendo una capa de servicios desacoplada sin recurrir a una migración Big Bang y asegurando la continuidad ininterrumpida de las operaciones comerciales.
 
 ## Componentes
+La arquitectura de transición se compone de un Gateway API centralizado desarrollado en FastAPI que actúa como único punto de entrada HTTP para los nuevos consumidores como el Portal de Servicios y la aplicación móvil. Por debajo del Gateway reside el Adapter Dinámico, encargado de encapsular la conexión técnica con la base de datos PostgreSQL heredada y aislar las particularidades del motor legacy. Adicionalmente, se integra un componente de resiliencia local implementado sobre SQLite que gestiona la idempotencia de retiros y un patrón Outbox transaccional desacoplado mediante un hilo de fondo, permitiendo aceptar retiros con respuesta HTTP doscientos dos ante caídas de la base principal.
 
 ## Modelo canónico
+El modelo canónico define contratos de intercambio estándar e independientes del almacenamiento físico, asegurando que los consumidores jamás tengan conocimiento de las columnas o tipos de datos internos de la base de datos legacy. Para el dominio de afiliados, el modelo unifica la estructura con atributos consistentes en formato JSON camelCase, tales como document, fullName, status con valores de enumeración ACTIVE, RETIRED o SUSPENDED, e incluye la relación empresarial con su identificador y nombre descriptivo. Asimismo, los beneficiarios y retiros manejan identificadores universales y fechas normalizadas bajo estándar ISO 8601, neutralizando nomenclaturas heredadas y diferencias estructurales entre versiones.
 
 ## Cambio de esquema
+Para garantizar tolerancia frente a cambios estructurales ejecutados por el administrador de base de datos como el script schema-change, el Adapter incorpora una resolución de esquema en tiempo de ejecución. Al procesar cada consulta, el sistema inspecciona la presencia de las tablas dinámicamente mediante el catálogo de información o maneja la transición estructural en caliente. Si las entidades originales son renombradas a identificadores modernos como person master, document number o status code, el adaptador mapea automáticamente las consultas y proyecciones relacionales hacia la nueva nomenclatura sin requerir reinicio del contenedor, protegiendo a los consumidores de cualquier impacto técnico.
 
 ## Alternativas descartadas
+- Migración completa Big Bang: Se descartó apagar el sistema legacy un fin de semana para migrar todo el esquema y los datos a una nueva base relacional moderna, debido al riesgo catastrófico de indisponibilidad y porque aplicaciones externas críticas como Educación no pueden ser modificadas en este ciclo y requieren continuar leyendo directamente la base de datos.
+- Replicación lógica mediante Change Data Capture (CDC): Se descartó incorporar un bus de mensajería distribuido como Kafka acoplado a conectores Debezium, debido a la sobrecarga innecesaria de infraestructura y recursos de memoria en los entornos locales de ejecución, optando en su lugar por un patrón Outbox ligero y persistente implementado localmente en SQLite.

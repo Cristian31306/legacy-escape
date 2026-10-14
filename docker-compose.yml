@@ -32,25 +32,46 @@ services:
     env_file: .env
     ports:
       - "${PORTAL_PORT:-8092}:8092"
+    depends_on:
+      gateway:
+        condition: service_started
 
-  # Subsidios: registra retiros con sp_registrar_retiro. Debe migrar al servicio nuevo.
+  # Subsidios: registra retiros con sp_registrar_retiro. Migrado a pasar por el gateway.
   subsidios-app:
     build: ./services/subsidios
     env_file: .env
     ports:
       - "${SUBSIDIOS_PORT:-8091}:8091"
+    volumes:
+      - ./data:/app/data:ro
+    depends_on:
+      legacy-db:
+        condition: service_healthy
+      gateway:
+        condition: service_started
+
+  # Gateway API (puerto de contrato 8082)
+  gateway:
+    build: ./src
+    env_file: .env
+    ports:
+      - "${GATEWAY_PORT:-8082}:8082"
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
     depends_on:
       legacy-db:
         condition: service_healthy
 
-  # Agreguen aquí su gateway (puerto de contrato 8082) y los servicios que necesiten.
-  # gateway:
-  #   build: ./src
-  #   env_file: .env
-  #   ports:
-  #     - "8082:8082"
-  #   volumes:
-  #     - ./logs:/app/logs
+  # Pruebas automatizadas (GE05)
+  tests:
+    build: ./tests
+    env_file: .env
+    volumes:
+      - ./test-results:/app/test-results
+    depends_on:
+      - gateway
+    profiles: ["test"]
 
 volumes:
   legacy-db-data:

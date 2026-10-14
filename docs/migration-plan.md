@@ -1,17 +1,9 @@
 # Plan de migración por dominio
 
-<!--
-Plantilla con el formato obligatorio.
-- Al menos 3 dominios, uno de ellos Afiliaciones.
-- Estado: LEGACY, DUAL o MODERN (debe coincidir con GET /api/v1/migration/status para Afiliaciones).
-- Criterio para avanzar: con un número medible (días, porcentaje, cantidad de errores...).
-- Rollback: cómo se vuelve al estado anterior (al menos 2 palabras).
-- La línea "Siguiente dominio:" con el nombre del próximo dominio a migrar.
-Revisen con: ./validator entregables
--->
-
 | Dominio | Estado | Criterio para avanzar | Rollback |
 |---|---|---|---|
-| | | | |
+| Afiliaciones | DUAL | 0 discrepancias y latencia < 200 ms durante 48 horas | Ejecutar ./rollback.sh affiliations |
+| Retiros | LEGACY | 100% de retiros reconciliados en LOGMOV sin duplicados en 24 horas | Reconfigurar subsidios-app para invocar sp_registrar_retiro directamente |
+| Empresas | LEGACY | Validación exitosa de conteo de miembros en 3 empresas piloto | Revertir gateway a consulta directa sobre tabla EMPRESA |
 
-Siguiente dominio:
+Siguiente dominio: Retiros
