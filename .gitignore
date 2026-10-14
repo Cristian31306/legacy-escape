@@ -1,3 +1,5 @@
 .env
 logs/*.log
+data/*.db
 MANUAL_EQUIPO.md
+plan_2_dias.md
