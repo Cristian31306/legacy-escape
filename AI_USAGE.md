@@ -27,3 +27,10 @@
 - Prompt principal (resumido): "Crea un script rollback.sh en bash que reciba el dominio affiliations y actualice el estado a LEGACY cumpliendo con códigos de salida Unix"
 - Qué produjo: Un script que dependía de curl para llamar al endpoint del gateway y modificar variables de entorno en tiempo de ejecución.
 - Qué modificó o corrigió el equipo: Modificamos el script para que manipule directamente el archivo de estado JSON compartido con cat EOF, garantizando una reversión inmediata en menos de 2 segundos sin depender de que el servicio HTTP esté levantado.
+
+## Uso 5
+- Herramienta: Antigravity IDE (Gemini 3.8 Flash)
+- Para qué se usó: Diagnóstico de dependencias de entorno y corrección del contenedor de pruebas automatizadas (GE05)
+- Prompt principal (resumido): "Diagnostica por qué pytest arroja 'Cannot find module pytest' y corrige la ejecución de tests en Dockerfile para que descubra los casos de prueba dentro del contenedor"
+- Qué produjo: Una recomendación inicial de instalar pytest globalmente en el host y ejecutar pytest apuntando a la carpeta tests/ dentro de la imagen.
+- Qué modificó o corrigió el equipo: Identificamos que el contexto de construcción en docker-compose.yml es ./tests, por lo que dentro del contenedor los archivos quedan en la raíz /app; corregimos el Dockerfile para ejecutar pytest . y validamos la generación del reporte JUnit XML con 12 pruebas aprobadas al 100%.
